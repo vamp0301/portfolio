@@ -70,12 +70,21 @@ class AvatarStore {
   exiting = false;
   /** reduced-motion: teleport instead of walking */
   reduceMotion = false;
+  /** role picked on the landing toggle; the skill bubbles light up to match */
+  role: "backend" | "fullstack" | "prompt" = "backend";
+  /** bumped whenever the visitor picks a role, so the avatar can react */
+  cue = 0;
+  /** 0..1 — how far the avatar has formed during the opening, when the skill
+   *  bubbles merge into him. 1 once formed (and always for reduced motion). */
+  reveal = 0;
+  /** the opening has played; later visits to the landing page skip it */
+  introDone = false;
   /** normalized pointer (-1..1), updated by the stage */
   pointer = { x: 0, y: 0 };
   /** 0..1 how "mobile" the layout is (stage compresses stations) */
   compress = 1;
   private listeners = new Set<Listener>();
-  private snapshot = { scene: this.scene, walking: this.walking, exiting: this.exiting };
+  private snapshot = { scene: this.scene, walking: this.walking, exiting: this.exiting, role: this.role };
 
   go(scene: SceneId) {
     if (this.scene === scene && !this.exiting) return;
@@ -83,6 +92,12 @@ class AvatarStore {
     this.exiting = false;
     this.targetX = STATIONS[scene].x;
     if (typeof document !== "undefined") document.documentElement.dataset.scene = scene;
+    this.emit();
+  }
+  setRole(role: "backend" | "fullstack" | "prompt", fromVisitor = true) {
+    if (this.role === role) return;
+    this.role = role;
+    if (fromVisitor) this.cue++;
     this.emit();
   }
   exit() {
@@ -98,7 +113,7 @@ class AvatarStore {
   subscribe = (l: Listener) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
   getSnapshot = () => this.snapshot;
   private emit() {
-    this.snapshot = { scene: this.scene, walking: this.walking, exiting: this.exiting };
+    this.snapshot = { scene: this.scene, walking: this.walking, exiting: this.exiting, role: this.role };
     this.listeners.forEach((l) => l());
   }
 }

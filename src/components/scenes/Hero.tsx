@@ -6,12 +6,10 @@
  */
 import Scene from "@/components/ui/Scene";
 import Decode from "@/components/ui/Decode";
-import { STATIONS } from "@/lib/avatarStore";
-import { ORBITS } from "@/lib/skills";
+import RoleToggle from "@/components/ui/RoleToggle";
 import type { Profile } from "@/lib/api";
 
 export default function Hero({ p }: { p: Profile | null }) {
-  const roles = p?.titleParts ?? ["Backend Engineer", "Full-Stack Builder", "Prompt Engineer"];
   const email = p?.contact.email ?? "gauranshagarwal12345@gmail.com";
   return (
     <Scene id="hero" className="hero" caption={false}>
@@ -25,22 +23,8 @@ export default function Hero({ p }: { p: Profile | null }) {
 
         <div className="hero__rule" data-reveal aria-hidden />
 
-        <ol className="hero__roles" data-reveal>
-          {roles.map((r, i) => (
-            <li key={r}><span>{String(i + 1).padStart(2, "0")}</span>{r}</li>
-          ))}
-        </ol>
+        <RoleToggle />
 
-        <p className="hero__lede" data-reveal>{STATIONS.hero.line}</p>
-
-        <div className="hero__orbits" data-reveal>
-          <span className="hero__orbits-label">In orbit</span>
-          {ORBITS.map((o) => (
-            <span key={o.id} className="orbit-key" style={{ ["--c" as string]: o.color } as React.CSSProperties}>
-              <i aria-hidden />{o.label}
-            </span>
-          ))}
-        </div>
 
         <div className="btn-row" data-reveal>
           <a className="btn" href="#about">Start the tour</a>

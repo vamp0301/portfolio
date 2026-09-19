@@ -6,6 +6,7 @@ import useSceneTracker from "@/lib/useSceneTracker";
 import Nav from "@/components/ui/Nav";
 import Analytics from "@/components/ui/Analytics";
 import Motion from "@/components/ui/Motion";
+import IntroOrbs from "@/components/ui/IntroOrbs";
 import Hero from "@/components/scenes/Hero";
 import About from "@/components/scenes/About";
 import Engineering from "@/components/scenes/Engineering";
@@ -34,6 +35,7 @@ export default function Portfolio() {
       <div className="wash" aria-hidden />
       <div className="spot" aria-hidden />
       <Stage />
+      <IntroOrbs />
       <div className="stage-fade" aria-hidden />
       <div className="noise" aria-hidden />
       <Nav />

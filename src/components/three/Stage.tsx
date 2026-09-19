@@ -9,7 +9,8 @@ import * as THREE from "three";
 import { avatar, STATIONS } from "@/lib/avatarStore";
 import { AVATAR_MODEL } from "@/lib/config";
 import GltfAvatar from "./GltfAvatar";
-import SkillAtom from "./SkillAtom";
+import SkillBubbles from "./SkillBubbles";
+import SkillFormation from "./SkillFormation";
 import { Ground } from "./Props";
 
 /** Camera + fog + key light follow the current scene. */
@@ -41,8 +42,11 @@ function Environment() {
        crop the avatar at the waist without wide-angle distortion; every other
        chapter keeps the wide full-figure view. */
     const cam = camera as THREE.PerspectiveCamera;
-    frame.fov += ((st.fov ?? 38) - frame.fov) * Math.min(1, dt * 2.5);
-    frame.dist += ((st.dist ?? 1) - frame.dist) * Math.min(1, dt * 2.5);
+    // During the opening the camera is held at its target framing (no ease),
+    // so the skeleton and the reveal happen in a still frame.
+    const ease = avatar.introDone ? Math.min(1, dt * 2.5) : 1;
+    frame.fov += ((st.fov ?? 38) - frame.fov) * ease;
+    frame.dist += ((st.dist ?? 1) - frame.dist) * ease;
     if (Math.abs(cam.fov - frame.fov) > 0.01) {
       cam.fov = frame.fov;
       cam.updateProjectionMatrix();
@@ -52,7 +56,7 @@ function Environment() {
     // framing (the hero puts a portrait at the top, details underneath).
     const narrowFrame = aspect < 1.1 ? st.narrow : undefined;
     const targetZ = narrowFrame ? narrowFrame.z : baseZ * frame.dist;
-    camera.position.z += (targetZ - camera.position.z) * Math.min(1, dt * 2.5);
+    camera.position.z += (targetZ - camera.position.z) * ease;
 
     /* Half the visible world height at the subject plane — the unit the
        phone's vertical offset is expressed in, so it survives a fov change. */
@@ -63,12 +67,12 @@ function Environment() {
     const parallax = 0.25 * frame.dist;
     const camTargetX = avatar.x * 0.25 + avatar.pointer.x * parallax;
     const camTargetY = 1.35 + avatar.pointer.y * -0.12 * frame.dist;
-    camera.position.x += (camTargetX - camera.position.x) * Math.min(1, dt * 2.5);
-    camera.position.y += (camTargetY - camera.position.y) * Math.min(1, dt * 2.5);
+    camera.position.x += (camTargetX - camera.position.x) * ease;
+    camera.position.y += (camTargetY - camera.position.y) * ease;
     // On a phone the layout stacks: copy on top, avatar in the lower band.
     // Aiming the camera higher pushes the avatar down the screen to match.
     const lookTarget = narrowFrame ? narrowFrame.look : (st.look ?? 1.05) + (aspect < 1 ? halfH * 0.56 : 0);
-    look.y += (lookTarget - look.y) * Math.min(1, dt * 2);
+    look.y += (lookTarget - look.y) * (avatar.introDone ? Math.min(1, dt * 2) : 1);
     camera.lookAt(avatar.x * 0.25, look.y, 0);
   });
   return null;
@@ -104,7 +108,8 @@ export default function Stage() {
         <Ground />
         <Suspense fallback={null}>
           <GltfAvatar url={AVATAR_MODEL} />
-          <SkillAtom />
+          <SkillBubbles />
+          <SkillFormation />
         </Suspense>
       </Canvas>
     </div>

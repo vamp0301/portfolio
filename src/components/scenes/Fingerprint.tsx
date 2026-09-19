@@ -1,86 +1,56 @@
 "use client";
 /**
- * The skill atom chapter. Gauransh is the nucleus; every skill on the résumé
- * orbits him on one of three rings — backend & data, AI & cloud, character —
- * crossed at 60 degrees like the classic atom. Labels stay upright, and the
- * far side of each orbit dims and shrinks so the rings read as depth.
+ * Chapter 07: every skill as a bubble, floating gently in place around a
+ * "Gauransh" core — nothing orbits. Bubbles are coloured by group (backend &
+ * data, AI & cloud, character) and wrap naturally at any screen width.
  * Character traits are listed underneath with the résumé evidence for each.
  */
-import { useEffect, useRef } from "react";
 import Scene from "@/components/ui/Scene";
 import { CHARACTER, ORBITS } from "@/lib/skills";
 
-/** Orbit geometry, in % of the square stage. */
-const RX = 44, RY = 15;
-const ROT = [0, 60, 120];
-const SPEED = [0.16, -0.13, 0.1];
+/** Stable pseudo-random in [0, 1) from a string, so sizes never reshuffle. */
+const rand = (s: string, salt = 0) => {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 1000) / 1000;
+};
 
 export default function Fingerprint() {
-  const stage = useRef<HTMLDivElement>(null);
-  const pills = useRef<(HTMLSpanElement | null)[][]>(ORBITS.map(() => []));
-
-  useEffect(() => {
-    const el = stage.current;
-    if (!el) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let visible = false;
-    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; }, { threshold: 0.05 });
-    io.observe(el);
-    const t0 = performance.now();
-    let raf = 0;
-    const place = (now: number) => {
-      const t = reduce ? 0 : (now - t0) / 1000;
-      ORBITS.forEach((o, i) => {
-        const phi = (ROT[i] * Math.PI) / 180;
-        o.skills.forEach((_, j) => {
-          const p = pills.current[i][j];
-          if (!p) return;
-          const th = t * SPEED[i] + (j / o.skills.length) * Math.PI * 2 + i * 0.7;
-          const x = Math.cos(th) * RX, y = Math.sin(th) * RY;
-          const X = x * Math.cos(phi) - y * Math.sin(phi);
-          const Y = x * Math.sin(phi) + y * Math.cos(phi);
-          const front = (Math.sin(th) + 1) / 2; // near side of the orbit
-          p.style.left = `${50 + X}%`;
-          p.style.top = `${50 + Y}%`;
-          p.style.opacity = String(0.34 + 0.66 * front);
-          p.style.transform = `translate(-50%, -50%) scale(${0.84 + 0.24 * front})`;
-          p.style.zIndex = String(front > 0.5 ? 3 : 1);
-        });
-      });
-    };
-    const tick = (now: number) => {
-      raf = requestAnimationFrame(tick);
-      if (visible) place(now);
-    };
-    place(t0);
-    raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); io.disconnect(); };
-  }, []);
-
+  const all = ORBITS.flatMap((o) => o.skills.map((s) => ({ skill: s, orbit: o })));
+  const mid = Math.floor(all.length / 2);
   return (
     <Scene id="fingerprint">
-      <div className="kicker" data-reveal>07 — Skill atom</div>
+      <div className="kicker" data-reveal>07 — Skill bubbles</div>
       <h2 className="h-scene" data-reveal>Every skill, <span className="grad">one core</span>.</h2>
 
-      <div className="atom" ref={stage} data-reveal>
-        <svg className="atom__rings" viewBox="0 0 100 100" aria-hidden>
-          {ORBITS.map((o, i) => (
-            <ellipse key={o.id} cx="50" cy="50" rx={RX} ry={RY} transform={`rotate(${ROT[i]} 50 50)`} style={{ stroke: o.color }} />
-          ))}
-        </svg>
-        <div className="atom__nucleus"><span>Gauransh</span></div>
-        {ORBITS.map((o, i) =>
-          o.skills.map((s, j) => (
+      <div className="cloud" data-reveal>
+        {all.map(({ skill, orbit }, i) => {
+          const big = orbit.id === "character";
+          // Size each bubble so its longest word fits inside the circle at a
+          // readable size (about 60% of the font per character, 78% of the
+          // diameter usable at mid-height), with a little variety on top.
+          const longest = Math.max(...skill.split(/[\s-]/).map((wd) => wd.length));
+          const font = 10.5;
+          const fit = (font * 0.6 * longest + 12) / 0.78;
+          const size = Math.round(Math.max(big ? 72 : 54, fit) + rand(skill) * 10);
+          return (
             <span
-              key={o.id + s}
-              ref={(el) => { pills.current[i][j] = el; }}
-              className="atom__pill"
-              style={{ ["--c" as string]: o.color } as React.CSSProperties}
+              key={orbit.id + skill}
+              className="cloud__bubble"
+              style={{
+                ["--c" as string]: orbit.color,
+                ["--d" as string]: `${size}px`,
+                ["--fk" as string]: (font / size).toFixed(4),
+                ["--dur" as string]: `${5 + rand(skill, 7) * 3.5}s`,
+                ["--delay" as string]: `${-rand(skill, 3) * 6}s`,
+                order: i < mid ? i : i + 1,
+              } as React.CSSProperties}
             >
-              {s}
+              {skill}
             </span>
-          ))
-        )}
+          );
+        })}
+        <span className="cloud__core" style={{ order: mid }}>Gauransh</span>
       </div>
 
       <div className="atom__legend" data-reveal>

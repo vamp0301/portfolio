@@ -102,12 +102,17 @@ interface Performance {
   tilt?: number;
   /** seconds held at the peak */
   hold: number;
+  /** seconds to reach the peak (default 0.5) and to let go (default 0.7) */
+  attack?: number;
+  release?: number;
 }
 const smile = (v: number) => ({ mouthSmileLeft: v, mouthSmileRight: v });
 const cheeks = (v: number) => ({ cheekSquintLeft: v, cheekSquintRight: v });
 const PERF: Record<SceneId, Performance> = {
   // Landing: a namaste with a small bow and a warm smile.
-  hero: { face: { ...smile(0.46), ...cheeks(0.28), eyeSquintLeft: 0.14, eyeSquintRight: 0.14 }, gesture: "namaste", bow: 0.3, hold: 2.9 },
+  // Landing: a quick namaste — palms meet, a bow, and rise, in about 0.9 s,
+  // so the whole opening (skills -> skeleton -> him -> namaste) fits in 2 s.
+  hero: { face: { ...smile(0.46), ...cheeks(0.28), eyeSquintLeft: 0.14, eyeSquintRight: 0.14 }, gesture: "namaste", bow: 0.28, hold: 0.36, attack: 0.22, release: 0.22 },
   about: { face: { ...smile(0.42), ...cheeks(0.2), mouthDimpleLeft: 0.15, mouthDimpleRight: 0.15 }, gesture: "none", nod: 0.13, hold: 1.8 },
   engineering: { face: { browDownLeft: 0.22, browDownRight: 0.22, mouthPressLeft: 0.28, mouthPressRight: 0.28, eyeSquintLeft: 0.18, eyeSquintRight: 0.18 }, gesture: "present", hold: 2.2 },
   docrud: { face: { ...smile(0.42), browOuterUpLeft: 0.18, browOuterUpRight: 0.18 }, gesture: "present", hold: 2.2 },
@@ -700,11 +705,29 @@ export default function GltfAvatar({ url }: { url: string }) {
     document.fonts.load(`500 92px ${family}`).then(() => print.draw(`${family}, cursive`)).catch(() => {});
   }, [print]);
 
+  /* Reveal plane: everything above it is hidden. It starts below his feet,
+     so he is invisible (but still rendered, so shaders compile up front),
+     and sweeps upward when the skill skeleton hands over to him. */
+  const clip = useMemo(() => new THREE.Plane(new THREE.Vector3(0, -1, 0), -0.15), []);
+  const gl = useThree((st) => st.gl);
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+    model.traverse((o) => {
+      const mats = (o as THREE.Mesh).material;
+      if (!mats) return;
+      for (const m of Array.isArray(mats) ? mats : [mats]) {
+        m.clippingPlanes = [clip];
+        m.clipShadows = true;
+        m.needsUpdate = true;
+      }
+    });
+  }, [gl, model, clip, print, watch, chain]);
+
   /* Dev-only handle for automated checks; stripped from production. */
   const camera = useThree((st) => st.camera);
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
-      (window as unknown as { __avatar?: unknown }).__avatar = { model, ...rig, camera, print: print?.mesh ?? null, watch: watch?.group ?? null, chain, perf: () => perf.current };
+      (window as unknown as { __avatar?: unknown }).__avatar = { model, ...rig, camera, print: print?.mesh ?? null, watch: watch?.group ?? null, chain, clip, store: avatar, perf: () => perf.current };
     }
   });
 
@@ -730,6 +753,10 @@ export default function GltfAvatar({ url }: { url: string }) {
   const cursor = useRef({ x: 0, y: 0, still: 0 });
   const perf = useRef<{ scene: SceneId; start: number } | null>(null);
   const prev = useRef<{ walking: boolean; scene: SceneId | null }>({ walking: false, scene: null });
+  /** set once the opening has finished and the first performance can start */
+  const intro = useRef(false);
+  /** a visitor picked a role on the toggle: react with a nod and a smile */
+  const cue = useRef({ seen: 0, start: -9 });
 
   useFrame((state, dt) => {
     if (watch) {
@@ -757,6 +784,10 @@ export default function GltfAvatar({ url }: { url: string }) {
       a.setWalking(true);
     } else { a.x = target; a.setWalking(false); }
     root.current.position.x = a.x;
+    // During the opening he is revealed from the feet up over the skeleton of
+    // skill balls: a clipping plane sweeps upward. (Fading a multi-mesh head
+    // would let the teeth and eyes show through the face mid-way.)
+    clip.constant = a.reveal >= 1 ? 100 : -0.15 + a.reveal * 2.2;
 
     const targetYaw = a.walking ? a.facing * Math.PI * 0.5 : 0;
     yaw.current += (targetYaw - yaw.current) * Math.min(1, d * 5);
@@ -765,14 +796,18 @@ export default function GltfAvatar({ url }: { url: string }) {
 
     /* ── arrival: start a performance ─────────────────────────── */
     const arrived = prev.current.walking && !a.walking;
-    const changedInPlace = !a.walking && prev.current.scene !== a.scene;
-    if ((arrived || changedInPlace) && !a.exiting && !station.away) perf.current = { scene: a.scene, start: t + (prev.current.scene === null ? 0.8 : 0.15) };
+    // The first arrival is the landing page: wait until he has formed.
+    const firstShow = !intro.current && a.introDone;
+    if (firstShow) intro.current = true;
+    const changedInPlace = !a.walking && (prev.current.scene !== a.scene || firstShow);
+    if ((arrived || changedInPlace) && a.introDone && !a.exiting && !station.away) perf.current = { scene: a.scene, start: t + (firstShow ? 0 : 0.15) };
     if (a.walking) perf.current = null;
     prev.current = { walking: a.walking, scene: a.scene };
 
     const P = perf.current ? PERF[perf.current.scene] : null;
     const tau = perf.current ? t - perf.current.start : -1;
-    const env = P && tau > 0 ? smoothstep(tau / 0.5) * (1 - smoothstep((tau - 0.5 - P.hold) / 0.7)) : 0;
+    const atk = P?.attack ?? 0.5, rel = P?.release ?? 0.7;
+    const env = P && tau > 0 ? smoothstep(tau / atk) * (1 - smoothstep((tau - atk - P.hold) / rel)) : 0;
     const gw = P && P.gesture !== "none" ? env : 0;
     const side = STATIONS[a.scene].side;
     const arm: Side = side === "right" ? "Left" : "Right"; // the arm nearer the content
@@ -796,7 +831,7 @@ export default function GltfAvatar({ url }: { url: string }) {
     // Namaste timing: the palms meet first, then he bows, holds, and rises
     // before the hands part. Other gestures bow (if at all) with the envelope.
     const bowEnv = P?.gesture === "namaste" && tau > 0
-      ? smoothstep((tau - 0.55) / 0.75) * (1 - smoothstep((tau - 2.35) / 0.75))
+      ? smoothstep((tau - atk * 0.8) / (P!.hold * 0.5)) * (1 - smoothstep((tau - atk - P!.hold * 0.75) / (rel * 1.1)))
       : env;
     const bow = (P?.bow ?? 0) * bowEnv;
     pose("Spine", breathe * 0.012 * idle + 0.03 * w + bow * 0.34, gait * 0.04 * w, 0);
@@ -861,7 +896,10 @@ export default function GltfAvatar({ url }: { url: string }) {
     L.pitch += (tPitch - L.pitch) * Math.min(1, d * 4.5);
 
     // A double nod over about 1.3 s, the second smaller, like a person agreeing.
-    let nod = 0;
+    if (a.cue !== cue.current.seen) { cue.current.seen = a.cue; cue.current.start = t; }
+    const ct = t - cue.current.start;
+    const cueEnv = ct > 0 && ct < 1.3 && !w ? Math.sin(Math.PI * (ct / 1.3)) : 0;
+    let nod = cueEnv * 0.07;
     if (P?.nod && tau > 0.4 && tau < 1.7) {
       const k = (tau - 0.4) / 1.3;
       nod = P.nod * Math.sin(Math.PI * 2 * k) * (k < 0.5 ? 1 : 0.55) * Math.sin(Math.PI * k) ** 0.5;
@@ -903,6 +941,8 @@ export default function GltfAvatar({ url }: { url: string }) {
     const F = tmp.face;
     for (const k of Object.keys(F)) F[k] = 0;
     for (const [k, v] of Object.entries(IDLE_FACE)) F[k] = v * (1 - env);
+    F.mouthSmileLeft = (F.mouthSmileLeft ?? 0) + cueEnv * 0.3;
+    F.mouthSmileRight = (F.mouthSmileRight ?? 0) + cueEnv * 0.3;
     if (P) for (const [k, v] of Object.entries(P.face)) F[k] = (F[k] ?? 0) + v * env;
     // While bowing he lowers his eyes and softens the lids.
     const lowered = P?.gesture === "namaste" ? bowEnv * 0.42 : 0;
